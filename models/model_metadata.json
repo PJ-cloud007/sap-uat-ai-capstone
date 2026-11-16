@@ -1,0 +1,30 @@
+{
+  "model_name": "Logistic Regression",
+  "target": "triage_category",
+  "input_feature": "description",
+  "group_field_for_evaluation_only": "source_family",
+  "train_rows": 816,
+  "test_rows": 384,
+  "train_fraction": 0.68,
+  "test_fraction": 0.32,
+  "split_seed": 23,
+  "labels": [
+    "Application Logic",
+    "Authorisation",
+    "Configuration",
+    "Integration",
+    "Master Data",
+    "Migration Mapping",
+    "Test Data"
+  ],
+  "synthetic_only": true,
+  "sklearn_version": "1.8.0",
+  "python_version": "3.13.5",
+  "selection_rule": "maximum training-only 3-fold StratifiedGroupKFold macro F1",
+  "limitations": [
+    "Synthetic text may encode class-specific vocabulary",
+    "Group split reduces but does not eliminate shared template artefacts",
+    "Not validated against operational defects",
+    "No probability/confidence calibration for LinearSVC"
+  ]
+}

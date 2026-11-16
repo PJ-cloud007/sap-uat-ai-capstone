@@ -1,0 +1,3 @@
+requirement_id,status,api_calls,elapsed_seconds,error
+REQ-PR-001,SUCCESS,1,11.37,
+REQ-AP-001,SUCCESS,2,10.5,

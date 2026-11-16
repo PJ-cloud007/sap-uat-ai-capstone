@@ -1,0 +1,5 @@
+method,selected_tests,total_tests,selected_minutes,full_minutes,effort_reduction_pct,requirement_coverage_pct,process_coverage_pct,mandatory_critical_coverage_pct,historical_exposure_retained_pct,historical_failed_executions_retained_pct,budget_minutes,budget_adjusted
+full_pack,480,480,8608.0,8608.0,0.0,100.0,100.0,100.0,100.0,100.0,6025.0,False
+shortest_first,376,480,6020.0,8608.0,30.07,100.0,100.0,100.0,71.08,79.14,6025.0,False
+criticality_first,366,480,6019.0,8608.0,30.08,100.0,100.0,100.0,70.72,76.9,6025.0,False
+risk_based,352,480,6024.0,8608.0,30.02,100.0,100.0,100.0,82.13,83.97,6025.0,False

@@ -1,0 +1,9 @@
+check,passed
+all_mandatory_critical_retained,True
+all_requirements_covered,True
+all_processes_covered,True
+all_within_identical_budget,True
+no_unapproved_gemini_cases_used,True
+candidate_count_480,True
+requirement_count_120,True
+input_synthetic_only,True
