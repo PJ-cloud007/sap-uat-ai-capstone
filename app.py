@@ -2,6 +2,7 @@
 import io
 import json
 import os
+import uuid
 from pathlib import Path
 import pandas as pd
 import streamlit as st
@@ -49,6 +50,8 @@ def init_review():
         frame = read_csv('generated_uat_cases.csv').copy()
         frame['review_status'] = 'Pending human review'
         frame['reviewer_comments'] = frame.get('reviewer_comments', '')
+        if frame['test_case_id'].astype(str).duplicated().any():
+            raise ValueError('Saved generated test cases contain duplicate IDs.')
         st.session_state.review_df = frame
 
 st.title('🧪 AI-Powered SAP UAT Intelligence')
@@ -102,24 +105,43 @@ elif page == 'GenAI test generation':
                 raise ValueError('Required test fields missing')
             generated=pd.DataFrame(payload)
             generated.insert(0,'requirement_id',choice)
-            generated.insert(0,'test_case_id',[f'LIVE-{choice}-01',f'LIVE-{choice}-02'])
+            run_id = uuid.uuid4().hex[:12].upper()
+            generated.insert(0,'test_case_id',[f'LIVE-{choice}-{run_id}-01',f'LIVE-{choice}-{run_id}-02'])
             generated['review_status']='Pending human review'
             generated['reviewer_comments']=''
             st.session_state.new_cases=generated
+            st.session_state.new_cases_queued=False
             st.success('Two candidates generated. Review before approval.')
         except Exception as exc:
             st.error(f'Generation failed: {type(exc).__name__}: {exc}')
     if 'new_cases' in st.session_state:
         st.dataframe(st.session_state.new_cases,hide_index=True,use_container_width=True)
         st.download_button('Download newly generated candidates',st.session_state.new_cases.to_csv(index=False),'new_gemini_candidates.csv','text/csv')
-        if st.button('Add new candidates to review queue'):
+        if st.button('Add new candidates to review queue', disabled=st.session_state.get('new_cases_queued', False)):
             init_review()
-            old=st.session_state.review_df
+            old=st.session_state.review_df.copy()
             fresh=st.session_state.new_cases.copy()
-            for col in old.columns:
-                if col not in fresh: fresh[col]=''
-            st.session_state.review_df=pd.concat([old,fresh[old.columns]],ignore_index=True)
-            st.success('Added to this session’s review queue. Export approved work before refreshing.')
+            if fresh['test_case_id'].astype(str).duplicated().any():
+                st.error('Generated candidates contain duplicate IDs. Generate again before adding.')
+            elif old['test_case_id'].astype(str).duplicated().any():
+                st.error('The existing review queue contains duplicate IDs. Export any needed work and start a fresh session.')
+            else:
+                existing=set(old['test_case_id'].astype(str))
+                novel=fresh.loc[~fresh['test_case_id'].astype(str).isin(existing)].copy()
+                if novel.empty:
+                    st.info('These candidates are already in the review queue; nothing added.')
+                    st.session_state.new_cases_queued=True
+                else:
+                    for col in old.columns:
+                        if col not in novel: novel[col]=''
+                    for col in novel.columns:
+                        if col not in old: old[col]=''
+                    st.session_state.review_df=pd.concat([old,novel[old.columns]],ignore_index=True)
+                    st.session_state.new_cases_queued=True
+                    st.session_state.review_editor_version=st.session_state.get('review_editor_version',0)+1
+                    st.success(f'Added {len(novel)} unique candidates to the review queue. Export decisions before refreshing.')
+        if st.session_state.get('new_cases_queued',False):
+            st.caption('This generation has already been queued. Generate again for new unique IDs.')
     if not api_key():
         st.info('To enable live generation, add GEMINI_API_KEY in Streamlit app secrets. Existing V2-03 evidence remains viewable without a key.')
 
@@ -130,14 +152,25 @@ elif page == 'Review and approve':
     editable=['test_scenario','preconditions','test_steps','expected_result','acceptance_criteria','review_status','reviewer_comments']
     disabled=[c for c in st.session_state.review_df.columns if c not in editable]
     editor=st.data_editor(st.session_state.review_df,hide_index=True,use_container_width=True,num_rows='fixed',disabled=disabled,
-                          column_config={'review_status':st.column_config.SelectboxColumn('Review status',options=['Pending human review','Approved','Rejected','Needs revision'],required=True)},key='review_editor')
-    if st.button('Apply review decisions'):
-        invalid=editor.loc[(editor.review_status=='Approved') & ((editor.test_steps.astype(str).str.strip()=='') | (editor.expected_result.astype(str).str.strip()==''))]
-        if len(invalid):st.error('Cannot approve cases with empty steps or expected results.')
-        else:
-            st.session_state.review_df=editor.copy()
-            st.success('Decisions applied to this session. Download CSV to preserve them.')
-    st.download_button('Download reviewed UAT cases',editor.to_csv(index=False),'reviewed_uat_cases.csv','text/csv')
+                          column_config={'review_status':st.column_config.SelectboxColumn('Review status',options=['Pending human review','Approved','Rejected','Needs revision'],required=True)},
+                          key=f"review_editor_{st.session_state.get('review_editor_version',0)}")
+    duplicate_ids=editor['test_case_id'].astype(str).duplicated(keep=False)
+    invalid=editor.loc[(editor.review_status=='Approved') & (
+        (editor.test_steps.astype(str).str.strip()=='') |
+        (editor.expected_result.astype(str).str.strip()=='') |
+        (editor.test_scenario.astype(str).str.strip()==''))]
+    if duplicate_ids.any():
+        st.error('Duplicate test-case IDs detected. Review decisions and export are blocked until IDs are unique.')
+    if len(invalid):
+        st.error('Approved cases must have a scenario, steps and expected result.')
+    if st.button('Apply review decisions',disabled=bool(duplicate_ids.any() or len(invalid))):
+        st.session_state.review_df=editor.copy()
+        st.session_state.review_editor_version=st.session_state.get('review_editor_version',0)+1
+        st.success('Review decisions saved in this session. Download CSV to preserve them.')
+        st.rerun()
+    st.download_button('Download reviewed UAT cases',st.session_state.review_df.to_csv(index=False),
+                       'reviewed_uat_cases.csv','text/csv',disabled=bool(duplicate_ids.any() or len(invalid)))
+    st.caption('Export contains only applied review decisions. Click Apply review decisions before downloading.')
     st.write('Review statuses (currently shown in editor):')
     st.dataframe(editor.review_status.value_counts().rename_axis('Status').reset_index(name='Count'),hide_index=True)
 
